@@ -124,8 +124,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return HealthResponse()
 
     @app.get("/api/config", response_model=ConfigResponse)
-    async def config():
-        return ConfigResponse(base_url=settings.app_base_url)
+    async def config(request: Request):
+        return ConfigResponse(base_url=request.state.public_origin)
 
     @app.get("/api/folders", response_model=FolderResponse)
     async def folders():
