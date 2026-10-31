@@ -10,7 +10,9 @@ class SecurityMiddleware:
     def __init__(self, app, settings):
         self.app = app
         self.settings = settings
-        self.authority = urlsplit(settings.app_base_url).netloc.lower()
+        self.origins_by_authority = {
+            urlsplit(origin).netloc: origin for origin in settings.public_origins
+        }
         self.active = 0
 
     async def __call__(self, scope, receive, send):
@@ -48,8 +50,14 @@ class SecurityMiddleware:
 
         if path == "/api/health" and method == "GET":
             return await self.app(scope, receive, secured_send)
-        if headers.get("host", "").lower() != self.authority:
-            return await reject("invalid_host", "Unexpected host. Check APP_BASE_URL.", 400)
+        public_origin = self.origins_by_authority.get(headers.get("host", "").lower())
+        if public_origin is None:
+            return await reject(
+                "invalid_host", "Unexpected host. Check APP_ALLOWED_ORIGINS or APP_BASE_URL.", 400
+            )
+        # Use the configured public scheme, even behind an HTTP TLS-terminating proxy.
+        # Neither Origin nor X-Forwarded-Host may choose which host this request targets.
+        scope.setdefault("state", {})["public_origin"] = public_origin
         if path.startswith("/api/"):
             if self.settings.auth_mode == "proxy" and not headers.get(
                 self.settings.auth_header.lower()
@@ -63,7 +71,7 @@ class SecurityMiddleware:
                 return await reject("cross_site", "Cross-site API requests are not allowed.", 403)
             if method not in ("GET", "HEAD"):
                 if (
-                    headers.get("origin") != self.settings.app_base_url
+                    headers.get("origin") != public_origin
                     or headers.get("x-requested-with") != "SendToRemarkable"
                 ):
                     return await reject("cross_site", "A same-origin request is required.", 403)

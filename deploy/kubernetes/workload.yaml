@@ -25,11 +25,13 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: reader
-          image: ghcr.io/danpicton/send-to-remarkable:0.1.0
+          image: ghcr.io/danpicton/send-to-remarkable:0.1.1
           ports:
             - {name: http, containerPort: 8000}
           env:
-            - {name: APP_BASE_URL, value: 'https://reader.example.internal'}
+            # JSON list: configure one or more exact public origins served by ingress.
+            - name: APP_ALLOWED_ORIGINS
+              value: '["https://reader.example.internal"]'
             - {name: AUTH_MODE, value: proxy}
             - {name: AUTH_HEADER, value: X-Auth-Request-User}
             - {name: RMFAKECLOUD_URL, value: 'http://rmfakecloud.remarkable.svc.cluster.local:3000'}

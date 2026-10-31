@@ -29,8 +29,12 @@ reject stale destinations. Never blindly retry an ambiguous upload failure.
 
 Require an authenticating ingress in production, with a configured identity header
 that ingress strips and sets. Default deny when that header is absent. Explicit
-local-development mode is allowed. Pin the public origin, validate Host, require
-same-origin POSTs plus a custom request header, and do not enable CORS. NetworkPolicy
+local-development mode is allowed. Allowlist exact public origins, validate Host,
+require same-origin POSTs plus a custom request header, and do not enable CORS.
+`APP_ALLOWED_ORIGINS` accepts a JSON list, with `APP_BASE_URL` as the legacy fallback.
+Host selects a configured origin including its public scheme; forwarded headers
+cannot override it. Bookmarklets use that origin; PWA routes remain relative.
+Browser preferences and installations are independent per origin. NetworkPolicy
 adds defence in depth but cannot distinguish the fetcher and rmfakecloud client in
 one pod. The application must therefore keep those clients strictly separate.
 

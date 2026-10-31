@@ -83,7 +83,8 @@ choose the format/destination in the app. Browser support varies; see the
 **Desktop bookmarklet:** expand **Share from your browser** in the app and drag
 the bookmarklet link to the bookmarks toolbar. Alternatively use **copy the
 bookmarklet**, create a bookmark and paste it into the bookmark's URL field.
-Click that bookmark while viewing an article. The target uses `APP_BASE_URL`.
+Click that bookmark while viewing an article. The target uses the allowed origin
+you opened the app on, so each hostname generates a bookmarklet for itself.
 Some websites/browser policies block bookmarklets; paste/share the URL instead.
 The app also accepts `/?url=<encoded-URL>` directly.
 
@@ -100,7 +101,8 @@ in the repository. Credentials belong to an existing rmfakecloud web user.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `APP_BASE_URL` | `http://localhost:8000` | Exact public origin; Host/Origin checks and bookmarklet |
+| `APP_BASE_URL` | `http://localhost:8000` | Single-origin fallback when `APP_ALLOWED_ORIGINS` is unset |
+| `APP_ALLOWED_ORIGINS` | unset | JSON array of exact public origins; overrides `APP_BASE_URL` |
 | `AUTH_MODE` | `proxy` | `proxy` requires identity header; `development` is local-only |
 | `AUTH_HEADER` | `X-Auth-Request-User` | Identity header set by trusted authenticating ingress |
 | `RMFAKECLOUD_URL` | empty | Trusted server base URL, without `/ui/api` |
@@ -118,6 +120,27 @@ in the repository. Credentials belong to an existing rmfakecloud web user.
 | `WORKER_MEMORY_MB` | `768` | Linux address-space limit per worker |
 | `TEMP_DIR` | `/tmp/send-to-remarkable` | Temporary jobs, removed after success/failure/timeout |
 
+One instance can serve any configured set of hostnames. For example, in `.env`:
+
+```dotenv
+APP_ALLOWED_ORIGINS='["https://reader.example.net","https://reader.other.example.net"]'
+```
+
+Use full origins (scheme, hostname and optional port), without paths or wildcards.
+Configure one public scheme per host/port so the app can identify the correct
+public origin behind TLS termination. The list replaces the single-origin fallback;
+localhost is not implicitly allowed when a list is set. Existing deployments using
+only `APP_BASE_URL` continue to work. Multi-origin support requires v0.1.1 or newer.
+
+Route each hostname to the same Service, with HTTPS and authentication on every
+ingress route. Preserve the incoming Host. Bookmarklets use the matching allowed
+origin; PWA/share-target routes are relative and stay on that hostname. Preferences,
+proxy sessions and PWA installations remain separate per browser origin, even on
+the same device. There is no preference synchronisation across hostnames.
+
+Allowlisting multiple origins does not enable cross-origin API calls: a POST must
+still come from the exact public origin corresponding to its request Host.
+
 Keep one Uvicorn worker per pod; limits are per process. Kubernetes example uses
 one conversion at a time within a 1 GiB memory limit. Increase container memory
 if you increase concurrency. Resource limits are protective bounds, not a promise
@@ -127,13 +150,13 @@ that all articles below the input limit will fit.
 
 All `/api/*` responses use `Cache-Control: no-store`. Errors are
 `{"error":{"code":"…","message":"…"}}`. The API intentionally has no CORS access.
-For POSTs send `Origin: <APP_BASE_URL>` and
+For POSTs send `Origin: <the configured public origin matching the request Host>` and
 `X-Requested-With: SendToRemarkable`, plus authentication through your proxy.
 
 | Endpoint | Request / response |
 |---|---|
 | `GET /api/health` | Unauthenticated liveness: `{"status":"ok"}`; does not contact cloud |
-| `GET /api/config` | Public-facing base URL only; no credentials |
+| `GET /api/config` | Allowed public origin matching this request's Host; no credentials |
 | `GET /api/folders` | `{"folders":[{"id":"","name":"Root","path":"/","parent":""},…]}` |
 | `POST /api/extract` | JSON `{"url":"https://…"}` → sanitised HTML and article metadata |
 | `POST /api/convert` | JSON `{"url":"https://…","format":"pdf"}` → attachment bytes |
@@ -209,11 +232,11 @@ Pushing a version tag publishes **linux/amd64** and **linux/arm64** images to
 `ghcr.io/danpicton/send-to-remarkable`, after those checks pass. For example:
 
 ```sh
-git tag -a v0.1.0 -m 'Release 0.1.0'
-git push origin v0.1.0
+git tag -a v0.1.1 -m 'Release 0.1.1'
+git push origin v0.1.1
 ```
 
-That publishes `:0.1.0`, `:0.1`, `:latest`, and `:sha-<full-commit-SHA>`. Prerelease
+That publishes `:0.1.1`, `:0.1`, `:latest`, and `:sha-<full-commit-SHA>`. Prerelease
 tags such as `v0.2.0-rc.1` publish only the prerelease and commit tags; they do not
 move `latest` or `0.2`. Only tag-push events publish; manual workflow runs validate
 without publishing. Publish stable tags in release order, because a stable tag
@@ -227,15 +250,15 @@ settings, set visibility to public if you want anonymous pulls; otherwise config
 your cluster's image pull credentials. The image's source label links it to the
 repository. Forks automatically publish under their own owner/repository name.
 
-For an already published image, use
-`ghcr.io/danpicton/send-to-remarkable:0.1.0`. To build it yourself:
+After publishing v0.1.1, use
+`ghcr.io/danpicton/send-to-remarkable:0.1.1`. To build it yourself:
 
 ```sh
-docker build -t your-registry/send-to-remarkable:0.1.0 .
+docker build -t your-registry/send-to-remarkable:0.1.1 .
 docker run --rm -p 127.0.0.1:8000:8000 --env-file .env \
   --read-only --tmpfs /tmp:rw,nosuid,size=128m \
   --memory=1g --cpus=2 -e MAX_CONVERSIONS=1 \
-  your-registry/send-to-remarkable:0.1.0
+  your-registry/send-to-remarkable:0.1.1
 ```
 
 The multi-stage image installs locked dependencies with uv, includes Pango/fonts,
@@ -305,8 +328,9 @@ mocks are not a substitute for that integration check.
 ## Troubleshooting and v1 boundaries
 
 - **401:** proxy did not inject the configured identity header, or login expired.
-- **400 invalid host / 403 cross-site:** public URL differs from `APP_BASE_URL`, or
-  ingress rewrote Host/Origin. Use one canonical origin.
+- **400 invalid host / 403 cross-site:** the hostname is missing from
+  `APP_ALLOWED_ORIGINS` (or the `APP_BASE_URL` fallback), ingress rewrote Host/Origin,
+  or a request crossed between origins. Each POST's Origin must match its Host.
 - **Cloud authentication error:** check web username/password and server base URL.
   Confirm the web UI works and compare the documented source contract with your
   rmfakecloud version. Never include `/ui/api` in `RMFAKECLOUD_URL`.

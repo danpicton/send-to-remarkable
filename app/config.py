@@ -3,12 +3,33 @@ from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from yarl import URL
+
+
+def normalize_origin(value: str) -> str:
+    if any(char.isspace() or ord(char) < 32 for char in value) or "\\" in value:
+        raise ValueError("Origins must not contain whitespace or backslashes")
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or "*" in parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in ("", "/")
+    ):
+        raise ValueError("Use an exact HTTP(S) origin without a path or credentials")
+    # Validate ports, canonicalise case/IDNA, and omit default ports and trailing slashes.
+    return str(URL(value).origin())
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_base_url: str = "http://localhost:8000"
+    app_allowed_origins: list[str] | None = None
     auth_mode: str = "proxy"
     auth_header: str = "X-Auth-Request-User"
     rmfakecloud_url: str = ""
@@ -29,18 +50,28 @@ class Settings(BaseSettings):
     @field_validator("app_base_url")
     @classmethod
     def public_origin(cls, value):
-        parsed = urlsplit(value)
-        if (
-            parsed.scheme not in ("http", "https")
-            or not parsed.hostname
-            or parsed.username
-            or parsed.password
-            or parsed.query
-            or parsed.fragment
-            or parsed.path not in ("", "/")
-        ):
-            raise ValueError("APP_BASE_URL must be an HTTP(S) origin without a path or credentials")
-        return value.rstrip("/")
+        return normalize_origin(value)
+
+    @field_validator("app_allowed_origins")
+    @classmethod
+    def allowed_origins(cls, values):
+        if values is None:
+            return None
+        if not values:
+            raise ValueError("APP_ALLOWED_ORIGINS must contain at least one origin")
+        origins = list(dict.fromkeys(normalize_origin(value) for value in values))
+        authorities = [urlsplit(origin).netloc for origin in origins]
+        if len(set(authorities)) != len(authorities):
+            raise ValueError("Configure only one public scheme for each host/port")
+        return origins
+
+    @property
+    def public_origins(self) -> list[str]:
+        return (
+            self.app_allowed_origins
+            if self.app_allowed_origins is not None
+            else [self.app_base_url]
+        )
 
     @field_validator("rmfakecloud_url")
     @classmethod
