@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f6f4ee">
+  <meta name="description" content="Turn a web article into a quiet read on your reMarkable.">
+  <title>Send to reMarkable</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <img src="/icon.svg" alt="" width="48" height="48">
+      <p class="eyebrow">A LITTLE LESS SCREEN TIME</p>
+      <h1>Send to reMarkable</h1>
+      <p class="intro">An article. A quiet place to read it.</p>
+    </header>
+    <form id="article-form">
+      <label for="url">Article URL</label>
+      <input id="url" name="url" type="url" inputmode="url" placeholder="https://…" required maxlength="4096" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="row">
+        <div><label for="format">Format</label><select id="format" name="format"><option value="pdf">PDF · fixed pages</option><option value="epub">EPUB · reflowable</option></select></div>
+        <div><label for="delivery">Delivery</label><select id="delivery" name="delivery"><option value="send">Send to reMarkable</option><option value="download">Download locally</option></select></div>
+      </div>
+      <div id="folder-section">
+        <div class="label-row"><label for="folder">Destination folder</label><button id="refresh" type="button" class="text-button">Refresh</button></div>
+        <select id="folder" name="folder"><option value="">Root</option></select>
+        <p id="folder-status" class="hint" role="status">Loading folders…</p>
+      </div>
+      <button id="submit" type="submit" class="primary">Send to reMarkable</button>
+    </form>
+    <div id="status" role="status" aria-live="polite" aria-atomic="true"></div>
+    <a id="download" class="download" hidden>Download document</a>
+    <noscript><p>JavaScript is needed to convert and send articles.</p></noscript>
+    <details>
+      <summary>Share from your browser</summary>
+      <p>Install this app in Chrome on Android, then choose it from the share sheet.</p>
+      <p>On desktop, drag <a id="bookmarklet" href="#" draggable="true">Send to reMarkable</a> to your bookmarks bar, or <button id="copy-bookmarklet" class="text-button" type="button">copy the bookmarklet</button>.</p>
+      <p class="hint">On iPhone or iPad, use a Shortcut to open this app with the shared URL. Setup instructions are in the project README.</p>
+      <p id="bookmark-status" class="hint" role="status"></p>
+    </details>
+    <footer>Made for reading. Your preferences stay on this device.</footer>
+  </main>
+</body>
+</html>

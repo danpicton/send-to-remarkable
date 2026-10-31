@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: reader
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: send-to-remarkable
+  namespace: reader
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: send-to-remarkable}
+  template:
+    metadata:
+      labels: {app: send-to-remarkable}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: reader
+          image: ghcr.io/danpicton/send-to-remarkable:0.1.0
+          ports:
+            - {name: http, containerPort: 8000}
+          env:
+            - {name: APP_BASE_URL, value: 'https://reader.example.internal'}
+            - {name: AUTH_MODE, value: proxy}
+            - {name: AUTH_HEADER, value: X-Auth-Request-User}
+            - {name: RMFAKECLOUD_URL, value: 'http://rmfakecloud.remarkable.svc.cluster.local:3000'}
+            - {name: RMFAKECLOUD_VERIFY_TLS, value: 'true'}
+            - {name: MAX_CONVERSIONS, value: '1'}
+          envFrom:
+            - secretRef: {name: send-to-remarkable}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            requests: {cpu: 100m, memory: 256Mi, ephemeral-storage: 64Mi}
+            limits: {cpu: '2', memory: 1Gi, ephemeral-storage: 256Mi}
+          readinessProbe:
+            httpGet: {path: /api/health, port: http}
+            initialDelaySeconds: 3
+          livenessProbe:
+            httpGet: {path: /api/health, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          volumeMounts:
+            - {name: temporary, mountPath: /tmp}
+      volumes:
+        - name: temporary
+          emptyDir: {sizeLimit: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: send-to-remarkable
+  namespace: reader
+spec:
+  selector: {app: send-to-remarkable}
+  ports:
+    - {name: http, port: 80, targetPort: http}

@@ -1,0 +1,8 @@
+*
+!app/
+!app/**
+!pyproject.toml
+!uv.lock
+!LICENSE
+!README.md
+app/**/__pycache__/
