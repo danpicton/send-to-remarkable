@@ -7,7 +7,8 @@ from starlette.responses import JSONResponse
 class SecurityMiddleware:
     """Enforce security and bounded request bodies before FastAPI parses multipart/JSON."""
 
-    def __init__(self, app, settings):
+    def __init__(self, app, settings, auth=None):
+        self.auth = auth
         self.app = app
         self.settings = settings
         self.origins_by_authority = {
@@ -59,6 +60,12 @@ class SecurityMiddleware:
         # Neither Origin nor X-Forwarded-Host may choose which host this request targets.
         scope.setdefault("state", {})["public_origin"] = public_origin
         if path.startswith("/api/"):
+            public_auth = path in ("/api/auth/session", "/api/auth/login")
+            if self.auth and not public_auth:
+                from starlette.requests import Request
+
+                if not self.auth.valid(Request(scope)):
+                    return await reject("authentication_required", "Sign in to continue.", 401)
             if self.settings.auth_mode == "proxy" and not headers.get(
                 self.settings.auth_header.lower()
             ):

@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException
 
+from app.auth import Login, SessionAuth
 from app.config import Settings
 from app.document import Document
 from app.errors import AppError
@@ -73,7 +74,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.pipeline = Pipeline(settings)
     app.state.cloud = None
-    app.add_middleware(SecurityMiddleware, settings=settings)
+    auth = SessionAuth(settings) if settings.auth_mode == "session" else None
+    app.add_middleware(SecurityMiddleware, settings=settings, auth=auth)
+
+    @app.get("/api/auth/session")
+    async def session(request: Request):
+        return {"enabled": auth is not None, "authenticated": bool(auth and auth.valid(request))}
+
+    @app.post("/api/auth/login")
+    async def login(payload: Login, request: Request):
+        if auth is None:
+            raise HTTPException(404)
+        return auth.login(payload, request)
+
+    @app.post("/api/auth/logout")
+    async def logout():
+        if auth is None:
+            raise HTTPException(404)
+        response = JSONResponse({"ok": True})
+        response.delete_cookie(auth.cookie, secure=True, httponly=True, samesite="strict")
+        return response
+
 
     @app.exception_handler(AppError)
     async def app_error(request, exc):

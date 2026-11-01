@@ -59,3 +59,52 @@ test('a proxy login page is never presented as a converted document', async () =
   assert.equal(document.getElementById('download').hidden, true);
   assert.match(document.getElementById('status').textContent, /sign.in/i);
 });
+
+test('session login preserves shared URL, handles expiry, and signs out', async () => {
+  const nodes = new Map();
+  const element = id => {
+    if (!nodes.has(id)) nodes.set(id, new Element());
+    return nodes.get(id);
+  };
+  globalThis.document = {getElementById: element, createElement: () => new Element()};
+  globalThis.location = {search: '?url=https://example.org/shared'};
+  let authenticated = false;
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/auth/session') return Response.json({enabled: true, authenticated});
+    if (path === '/api/auth/login') {
+      assert.deepEqual(JSON.parse(options.body), {username: 'reader', password: 'password'});
+      authenticated = true;
+      return Response.json({ok: true});
+    }
+    if (path === '/api/auth/logout') {
+      authenticated = false;
+      return Response.json({ok: true});
+    }
+    if (!authenticated) return Response.json({error: {message: 'Sign in to continue.'}}, {status: 401});
+    if (path === '/api/config') return Response.json({base_url: 'https://reader.example'});
+    if (path === '/api/folders') return Response.json({folders: [{id: '', path: '/'}]});
+    throw Error(`Unexpected request: ${path}`);
+  };
+  await import('../app/static/app.js?session-test');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('login-form').hidden, false);
+  assert.equal(element('article-form').hidden, true);
+  assert.equal(element('url').value, 'https://example.org/shared');
+  element('username').value = 'reader';
+  element('password').value = 'password';
+  await element('login-form').listeners.submit({preventDefault() {}});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('password').value, '');
+  assert.equal(element('login-form').hidden, true);
+  assert.equal(element('article-form').hidden, false);
+  assert.equal(element('url').value, 'https://example.org/shared');
+  authenticated = false;
+  await element('refresh').listeners.click();
+  assert.equal(element('login-form').hidden, false);
+  assert.equal(element('url').value, 'https://example.org/shared');
+  authenticated = true;
+  await element('logout').listeners.click();
+  assert.equal(authenticated, false);
+  assert.equal(element('url').value, '');
+  assert.equal(element('download').hidden, true);
+});

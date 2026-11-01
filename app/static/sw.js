@@ -1,4 +1,4 @@
-const CACHE = 'remarkable-shell-v2';
+const CACHE = 'remarkable-shell-v3';
 // Installation metadata must reach the network so browsers see manifest/icon updates.
 const SHELL = ['/', '/app.js', '/preferences.js', '/styles.css', '/icon.svg'];
 

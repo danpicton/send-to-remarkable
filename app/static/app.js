@@ -9,6 +9,14 @@ let busy = false;
 let loadingFolders = false;
 let hasFolders = false;
 let bookmarkCode = '';
+let sessionLogin = false;
+
+function showLogin() {
+  $('login-form').hidden = false;
+  $('article-form').hidden = true;
+  $('logout').hidden = true;
+}
+
 
 $('format').value = prefs.format;
 $('delivery').value = prefs.delivery;
@@ -42,6 +50,7 @@ async function api(path, options = {}) {
     signal: AbortSignal.timeout(180000),
   });
   if (!response.ok) {
+    if (response.status === 401 && sessionLogin) showLogin();
     let message = `Request failed (HTTP ${response.status}).`;
     try { message = (await response.json()).error.message || message; } catch { /* Proxy errors. */ }
     const error = new Error(message);
@@ -147,8 +156,54 @@ $('copy-bookmarklet').addEventListener('click', async () => {
     $('bookmark-status').textContent = 'Copy unavailable. Drag the bookmarklet link to your bookmarks bar instead.';
   }
 });
-controls();
-loadFolders();
-setupBookmarklet();
+$('login-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  $('login-submit').disabled = true;
+  $('login-status').textContent = '';
+  try {
+    await api('/api/auth/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username: $('username').value, password: $('password').value}),
+    });
+    $('password').value = '';
+    $('login-form').hidden = true;
+    $('article-form').hidden = false;
+    $('logout').hidden = false;
+    loadFolders();
+    setupBookmarklet();
+  } catch (error) {
+    $('login-status').textContent = error.message;
+  } finally {
+    $('login-submit').disabled = false;
+  }
+});
+$('logout').addEventListener('click', async () => {
+  try {
+    await api('/api/auth/logout', {method: 'POST'});
+    if (fileURL) URL.revokeObjectURL(fileURL);
+    fileURL = null;
+    $('download').hidden = true;
+    $('url').value = '';
+    status('');
+    showLogin();
+  } catch (error) {
+    status(error.message, 'error');
+  }
+});
+async function start() {
+  controls();
+  try {
+    const session = await (await api('/api/auth/session')).json();
+    sessionLogin = session.enabled;
+    if (sessionLogin && !session.authenticated) {
+      showLogin();
+      return;
+    }
+    $('logout').hidden = !sessionLogin;
+  } catch { /* Offline/proxy mode: existing API errors explain unavailable access. */ }
+  loadFolders();
+  setupBookmarklet();
+}
+start();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 window.addEventListener('online', loadFolders);

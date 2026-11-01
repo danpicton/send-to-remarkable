@@ -2,7 +2,7 @@
 
 A small self-hosted PWA: share or paste an article URL, choose PDF or EPUB and a
 folder, then send it through your existing rmfakecloud server. You can also just
-download the file. There is no database, reading history, account system or queue.
+download the file. There is no database, reading history, registration system or queue.
 
 Python 3.12+, FastAPI, Trafilatura, WeasyPrint, EbookLib, plain HTML/CSS/JavaScript.
 Python packages are managed with **uv**. The project is AGPL-3.0 licensed, matching
@@ -30,8 +30,8 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 
 Open **http://localhost:8000** (not `127.0.0.1`; the configured Host must match).
 Omit rmfakecloud credentials to use local downloads only. Development mode disables
-authentication; keep it bound to loopback. Production requires an authenticating
-reverse proxy and HTTPS. Use Linux for the resource-limited processing workers.
+authentication; keep it bound to loopback. Production requires HTTPS and either an authenticating
+reverse proxy or the built-in session login. Use Linux for the resource-limited processing workers.
 
 ## Use it
 
@@ -117,7 +117,9 @@ in the repository. Credentials belong to an existing rmfakecloud web user.
 |---|---|---|
 | `APP_BASE_URL` | `http://localhost:8000` | Single-origin fallback when `APP_ALLOWED_ORIGINS` is unset |
 | `APP_ALLOWED_ORIGINS` | unset | JSON array of exact public origins; overrides `APP_BASE_URL` |
-| `AUTH_MODE` | `proxy` | `proxy` requires identity header; `development` is local-only |
+| `AUTH_MODE` | `proxy` | `proxy` requires identity header; `session` enables built-in login; `development` is local-only |
+| `AUTH_SESSION_SECRET` | empty | Session mode: stable random signing key, at least 32 characters |
+| `AUTH_SESSION_DAYS` | `30` | Session mode: fixed login lifetime in days (1–90) |
 | `AUTH_HEADER` | `X-Auth-Request-User` | Identity header set by trusted authenticating ingress |
 | `RMFAKECLOUD_URL` | empty | Trusted server base URL, without `/ui/api` |
 | `RMFAKECLOUD_USERNAME` | empty | Web login email/user ID |
@@ -160,6 +162,34 @@ one conversion at a time within a 1 GiB memory limit. Increase container memory
 if you increase concurrency. Resource limits are protective bounds, not a promise
 that all articles below the input limit will fit.
 
+## Built-in login
+
+Set `AUTH_MODE=session` to use a single-account login form instead of proxy
+authentication. Sign in with the configured `RMFAKECLOUD_USERNAME` and
+`RMFAKECLOUD_PASSWORD`. Set `AUTH_SESSION_SECRET` to a stable, randomly generated
+secret of at least 32 characters through your normal secret-management workflow.
+All configured public origins must use HTTPS. Proxy mode remains the default.
+
+Sessions last 30 days by default (`AUTH_SESSION_DAYS`), with no sliding renewal.
+The signed cookie is Secure, HttpOnly, SameSite=Strict, and host-only; sessions are
+also bound to the public origin. They survive app restarts if the signing key and
+credentials stay unchanged. Changing either credential or the signing key
+invalidates existing sessions. Sign out removes this browser's cookie; a copied
+cookie remains usable until expiry or credential/key rotation.
+
+Login attempts are limited to five per minute across the account, per process.
+Keep one worker and one replica; this in-memory throttle resets on restart.
+The app shell, health check, and login/session endpoints are public; other API
+routes require a valid session and ignore proxy identity headers. Login/logout
+POSTs have the same origin and custom-header checks as other POSTs. Credentials
+and API responses are never cached by the service worker.
+
+For an existing Basic Auth deployment, configure and roll out a compatible app
+image with session mode and its signing key first, then remove the Basic Auth
+middleware from the ingress. Retain HTTPS, request limits, and network isolation.
+Home and meshnet hostnames have independent sessions. Shared article URLs remain
+in the form while signing in.
+
 ## API
 
 All `/api/*` responses use `Cache-Control: no-store`. Errors are
@@ -189,8 +219,8 @@ folders and timeouts receive distinct errors without upstream response bodies.
 ## Security and limits
 
 Do **not** publish an unauthenticated arbitrary-URL fetcher, even on a home LAN.
-Production authentication is delegated to your existing proxy (e.g. an OIDC
-forward-auth service). The proxy must **strip any incoming identity header**,
+Production authentication uses the built-in session login or your existing proxy
+(e.g. an OIDC forward-auth service). In proxy mode, The proxy must **strip any incoming identity header**,
 authenticate the user, and set `AUTH_HEADER` itself. Restrict the Service/Pod so
 only that proxy can reach it; a spoofable header on an exposed port is not auth.
 Configure the proxy to forward the original Host unchanged. The app does not trust
