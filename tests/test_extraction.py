@@ -39,3 +39,28 @@ def test_sanitizer_blocks_active_content_and_resources():
 def test_empty_extraction_is_useful_error():
     with pytest.raises(AppError, match="readable article"):
         TrafilaturaExtractor().extract(b"<html><nav>Home</nav></html>", "https://example.org/")
+
+
+def test_html_title_takes_precedence_over_article_metadata():
+    content = FIXTURE.read_bytes().replace(
+        b"<title>The quiet garden</title>",
+        b"<title>  The garden: a guide &amp; more | Site  </title>"
+        b'<meta property="og:title" content="Other title">',
+    )
+    article = TrafilaturaExtractor().extract(content, "https://example.org/garden")
+    assert article.title == "The garden: a guide & more | Site"
+
+
+def test_missing_html_title_falls_back_to_extracted_title():
+    content = FIXTURE.read_bytes().replace(b"<title>The quiet garden</title>", b"")
+    article = TrafilaturaExtractor().extract(content, "https://example.org/garden")
+    assert article.title == "The quiet garden"
+
+
+def test_unicode_html_title_without_charset():
+    content = FIXTURE.read_bytes().replace(
+        b"<title>The quiet garden</title>",
+        "<title>Café: a reader’s guide — 日本語</title>".encode(),
+    )
+    article = TrafilaturaExtractor().extract(content, "https://example.org/garden")
+    assert article.title == "Café: a reader’s guide — 日本語"
