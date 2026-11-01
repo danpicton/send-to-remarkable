@@ -38,3 +38,15 @@ test('installation refuses authentication redirects instead of caching them', as
   await assert.rejects(installed);
   assert.deepEqual(cached, []);
 });
+
+test('installation metadata is fetched fresh with the browser credentials', async () => {
+  const {handlers} = await worker();
+  for (const path of ['/manifest.webmanifest', '/icon-192.png', '/icon-512.png']) {
+    let intercepted = false;
+    handlers.fetch({
+      request: {url: 'https://reader.example' + path, method: 'GET'},
+      respondWith: () => {intercepted = true;},
+    });
+    assert.equal(intercepted, false, path + ' must bypass the shell cache');
+  }
+});
