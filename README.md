@@ -65,6 +65,20 @@ app/Add to Home screen. Share an article from your browser and choose **Send to
 reMarkable**. The manifest's GET share target accepts `url`, `text`, and `title`;
 URL takes precedence. Sharing only fills the form, never triggers an upload.
 Installation and OS share-sheet availability must be checked on your device.
+
+After upgrading from a shortcut-only installation, open the site online, sign in,
+reload once so the updated service worker controls the page, and remove the old
+shortcut. Install again from Chrome or Brave's menu. Confirm it opens standalone
+and appears in Android's app settings, then share a URL to it from another app.
+Test both a cold launch and a text-only shared URL.
+
+The manifest link uses `crossorigin="use-credentials"` so an authenticating proxy
+receives the browser session when the browser discovers the manifest (required
+even on the same origin). Manifest and PNG icons bypass the service-worker cache
+so installation metadata stays current. In remote DevTools, check Application →
+Manifest for errors and confirm the manifest/icon responses are JSON/PNG, not
+a proxy login page. HTTPS must have a certificate trusted by the phone.
+
 See [Chrome's share-target documentation](https://developer.chrome.com/docs/capabilities/web-apis/web-share-target).
 
 **iPhone/iPad:** install to the Home Screen if desired. Where native share-target

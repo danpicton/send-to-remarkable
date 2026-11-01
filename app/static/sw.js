@@ -1,6 +1,6 @@
-const CACHE = 'remarkable-shell-v1';
-const SHELL = ['/', '/app.js', '/preferences.js', '/styles.css', '/manifest.webmanifest',
-  '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+const CACHE = 'remarkable-shell-v2';
+// Installation metadata must reach the network so browsers see manifest/icon updates.
+const SHELL = ['/', '/app.js', '/preferences.js', '/styles.css', '/icon.svg'];
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {

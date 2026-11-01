@@ -1,3 +1,4 @@
+from html.parser import HTMLParser
 from unittest.mock import AsyncMock
 
 import httpx
@@ -173,3 +174,37 @@ async def test_fixture_to_download_then_mock_cloud(client, app):
         assert uploaded.status_code == 200
         assert uploaded.json()["id"] == "uploaded"
     assert calls == ["/ui/api/login", "/ui/api/documents", "/ui/api/documents/upload"]
+
+
+class ManifestLinks(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.links = []
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "link" and attrs.get("rel") == "manifest":
+            self.links.append(attrs)
+
+
+async def test_manifest_discovery_includes_proxy_session(client):
+    page = await client.get("/")
+    parser = ManifestLinks()
+    parser.feed(page.text)
+    assert len(parser.links) == 1
+    link = parser.links[0]
+    assert link.get("crossorigin") == "use-credentials"
+    response = await client.get(link["href"])
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/manifest+json")
+    manifest = response.json()
+    assert manifest["display"] == "standalone"
+    assert manifest["share_target"]["action"] == "/"
+    assert manifest["share_target"]["params"]["url"] == "url"
+    for icon in manifest["icons"]:
+        image = await client.get(icon["src"])
+        assert image.status_code == 200
+        assert image.content[:8] == b"\x89PNG\r\n\x1a\n"
+        width = int.from_bytes(image.content[16:20], "big")
+        height = int.from_bytes(image.content[20:24], "big")
+        assert icon["sizes"] == f"{width}x{height}"
