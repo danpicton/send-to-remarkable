@@ -36,12 +36,19 @@ reverse proxy or the built-in session login. Use Linux for the resource-limited 
 ## Use it
 
 1. Paste a public HTTP(S) article URL.
-2. Choose PDF (A5 pages, serif text, metadata and page numbers) or EPUB (reflowable
+2. Optionally enter an **Article title**, or click **Use page title** to load and edit
+   the HTML title. Leaving it blank uses the page title automatically.
+3. Choose PDF (A5 pages, serif text, metadata and page numbers) or EPUB (reflowable
    XHTML, metadata and navigation).
-3. Choose **Send to reMarkable** and a destination, or **Download locally**.
-4. Press the action button. After conversion a download link remains available,
+4. Choose **Send to reMarkable** and a destination, or **Download locally**.
+5. Press the action button. After conversion a download link remains available,
    including when an upload fails. Successful upload means rmfakecloud accepted
    the document; the tablet still needs to synchronise.
+
+Titles apply to document headings, metadata and filenames. Filenames preserve spaces,
+accents and punctuation; path separators and control characters become spaces,
+straight double quotes become typographic double quotes, and names are limited to
+180 UTF-8 bytes plus the extension. Titles are not saved as browser preferences.
 
 Format, delivery mode and folder are stored only in this browser's `localStorage`.
 Other devices have independent preferences. URLs and article contents are not
@@ -203,7 +210,7 @@ For POSTs send `Origin: <the configured public origin matching the request Host>
 | `GET /api/config` | Allowed public origin matching this request's Host; no credentials |
 | `GET /api/folders` | `{"folders":[{"id":"","name":"Root","path":"/","parent":""},…]}` |
 | `POST /api/extract` | JSON `{"url":"https://…"}` → sanitised HTML and article metadata |
-| `POST /api/convert` | JSON `{"url":"https://…","format":"pdf"}` → attachment bytes |
+| `POST /api/convert` | JSON `{"url":"https://…","format":"pdf","title":"Optional title"}` → attachment bytes |
 | `POST /api/send` | Multipart `file` (PDF/EPUB) and `folder` (ID, empty for root) → `{"id":"…","name":"…"}` |
 
 The send endpoint accepts an already converted file. This avoids doing conversion

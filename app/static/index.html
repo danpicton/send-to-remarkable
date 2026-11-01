@@ -34,6 +34,9 @@
     <form id="article-form">
       <label for="url">Article URL</label>
       <input id="url" name="url" type="url" inputmode="url" placeholder="https://…" required maxlength="4096" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="label-row"><label for="title">Article title</label><button id="page-title" type="button" class="text-button">Use page title</button></div>
+      <input id="title" name="title" maxlength="500" placeholder="Defaults to the HTML page title" autocomplete="off" aria-describedby="title-hint">
+      <p id="title-hint" class="hint">Edit the title, or leave blank to use the page title automatically.</p>
       <div class="row">
         <div><label for="format">Format</label><select id="format" name="format"><option value="pdf">PDF · fixed pages</option><option value="epub">EPUB · reflowable</option></select></div>
         <div><label for="delivery">Delivery</label><select id="delivery" name="delivery"><option value="send">Send to reMarkable</option><option value="download">Download locally</option></select></div>

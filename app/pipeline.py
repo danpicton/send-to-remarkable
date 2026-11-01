@@ -11,7 +11,9 @@ from app.extraction.article import Article
 from app.extraction.fetch import FetchedPage, PublicFetcher
 
 
-async def run_worker(page: FetchedPage, format: str | None, settings: Settings):
+async def run_worker(
+    page: FetchedPage, format: str | None, settings: Settings, title: str | None = None
+):
     # Importing the light document value class must not import WeasyPrint in the API process.
     from app.document import Document
 
@@ -22,6 +24,7 @@ async def run_worker(page: FetchedPage, format: str | None, settings: Settings):
         options = dict(
             url=page.url,
             format=format,
+            title=title,
             memory_mb=settings.worker_memory_mb,
             timeout=settings.conversion_timeout,
             max_document_bytes=settings.max_document_bytes,
@@ -82,7 +85,7 @@ class Pipeline:
         finally:
             self.active -= 1
 
-    async def process(self, url: str, format: str | None):
+    async def process(self, url: str, format: str | None, title: str | None = None):
         async with self.slot():
             page = await self.fetcher.fetch(url)
-            return await run_worker(page, format, self.settings)
+            return await run_worker(page, format, self.settings, title)

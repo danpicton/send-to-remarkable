@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -24,6 +25,7 @@ STATIC = Path(__file__).parent / "static"
 class ConvertRequest(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     format: Literal["pdf", "epub"] = "pdf"
+    title: str | None = Field(default=None, max_length=500)
 
 
 class ExtractRequest(BaseModel):
@@ -107,7 +109,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {
                 "error": {
                     "code": "validation_error",
-                    "message": "Check the URL and selected format.",
+                    "message": "Check the URL, title (up to 500 characters), and selected format.",
                 }
             },
             status_code=422,
@@ -158,12 +160,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/convert")
     async def convert(payload: ConvertRequest):
-        _, document = await app.state.pipeline.process(payload.url, payload.format)
+        _, document = await app.state.pipeline.process(payload.url, payload.format, payload.title)
         return Response(
             document.data,
             media_type=document.media_type,
             headers={
-                "Content-Disposition": f'attachment; filename="{document.filename}"',
+                "Content-Disposition": (
+                    f'attachment; filename="article.{payload.format}"; '
+                    f"filename*=UTF-8''{quote(document.filename, safe='')}"
+                ),
             },
         )
 

@@ -29,7 +29,7 @@ function status(message, kind = '') {
   $('status').dataset.kind = kind;
 }
 function controls() {
-  for (const id of ['url', 'format', 'delivery', 'submit']) $(id).disabled = busy;
+  for (const id of ['url', 'title', 'page-title', 'format', 'delivery', 'submit']) $(id).disabled = busy;
   $('folder-section').hidden = prefs.delivery === 'download';
   $('folder').disabled = busy || loadingFolders || !hasFolders;
   $('refresh').disabled = busy || loadingFolders;
@@ -87,6 +87,26 @@ async function loadFolders() {
   }
 }
 $('refresh').addEventListener('click', loadFolders);
+$('url').addEventListener('input', () => { $('title').value = ''; });
+$('page-title').addEventListener('click', async () => {
+  if (busy) return;
+  busy = true;
+  controls();
+  status('Reading the page title…');
+  try {
+    const article = await (await api('/api/extract', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url: $('url').value.trim()}),
+    })).json();
+    $('title').value = article.title;
+    status('Page title loaded. You can edit it before sending.');
+  } catch (error) {
+    status(error.message, 'error');
+  } finally {
+    busy = false;
+    controls();
+  }
+});
 
 $('article-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -101,14 +121,17 @@ $('article-form').addEventListener('submit', async event => {
     status('Extracting the article and preparing your document…');
     const response = await api('/api/convert', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: $('url').value.trim(), format: prefs.format}),
+      body: JSON.stringify({url: $('url').value.trim(), format: prefs.format, title: $('title').value.trim() || null}),
     });
     const expectedType = prefs.format === 'pdf' ? 'application/pdf' : 'application/epub+zip';
     if (response.headers.get('Content-Type')?.split(';')[0] !== expectedType) {
       throw new Error('Unexpected response. Check your proxy sign-in and try again.');
     }
     const blob = await response.blob();
-    const filename = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || `article.${prefs.format}`;
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+    const filename = encodedName ? decodeURIComponent(encodedName)
+      : disposition.match(/filename="([^"]+)"/)?.[1] || `article.${prefs.format}`;
     fileURL = URL.createObjectURL(blob);
     $('download').href = fileURL;
     $('download').download = filename;
@@ -184,6 +207,7 @@ $('logout').addEventListener('click', async () => {
     fileURL = null;
     $('download').hidden = true;
     $('url').value = '';
+    $('title').value = '';
     status('');
     showLogin();
   } catch (error) {

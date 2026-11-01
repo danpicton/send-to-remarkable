@@ -85,3 +85,27 @@ async def test_cancellation_kills_worker_and_cleans_directory(tmp_path, monkeypa
     assert process.killed
     assert list(tmp_path.iterdir()) == []
     assert not any("RMFAKECLOUD" in key for key in spawn.call_args.kwargs["env"])
+
+
+@pytest.mark.parametrize("format", ["pdf", "epub"])
+@pytest.mark.parametrize("title", ["  Café: a reader’s guide (3.2)?  ", " \t ", None])
+async def test_worker_title_override_and_default(tmp_path, format, title):
+    import io
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    from pypdf import PdfReader
+
+    page = FetchedPage(
+        (Path(__file__).parent / "fixtures/article.html").read_bytes(), "https://example.org/story"
+    )
+    article, doc = await run_worker(page, format, Settings(temp_dir=tmp_path), title)
+    expected = title.strip() if title and title.strip() else "The quiet garden"
+    assert article.title == expected
+    assert doc.filename == f"{expected}.{format}"
+    if format == "pdf":
+        assert PdfReader(io.BytesIO(doc.data)).metadata.title == expected
+    else:
+        with zipfile.ZipFile(io.BytesIO(doc.data)) as archive:
+            opf = ET.fromstring(archive.read("EPUB/content.opf"))
+            assert opf.find(".//{http://purl.org/dc/elements/1.1/}title").text == expected

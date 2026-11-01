@@ -28,6 +28,9 @@ def main():
             raise AppError(
                 "article_too_large", "The extracted article is too long to convert.", 413
             )
+        title = " ".join((options.get("title") or "").split())
+        if title:
+            article.title = title
         result = {"article": article.model_dump()}
         if options["format"]:
             from app.conversion.documents import convert

@@ -108,3 +108,48 @@ test('session login preserves shared URL, handles expiry, and signs out', async 
   assert.equal(element('url').value, '');
   assert.equal(element('download').hidden, true);
 });
+
+test('page titles can be edited, Unicode filenames survive, and URL changes reset titles', async () => {
+  const element = id => document.getElementById(id);
+  const filename = 'Café: a reader’s guide (3.2)?.pdf';
+  let payload;
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/extract') return Response.json({title: 'Original page title'});
+    if (path === '/api/convert') {
+      payload = JSON.parse(options.body);
+      return new Response('%PDF-test', {headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="article.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      }});
+    }
+    if (path === '/api/send') {
+      assert.equal(options.body.get('file').name, filename);
+      return Response.json({id: 'uploaded'});
+    }
+    throw Error(`Unexpected request: ${path}`);
+  };
+  element('url').value = 'https://example.org/story';
+  await element('page-title').listeners.click();
+  assert.equal(element('title').value, 'Original page title');
+  element('title').value = 'Café: a reader’s guide (3.2)?';
+  await element('article-form').listeners.submit({preventDefault() {}});
+  assert.equal(payload.title, element('title').value);
+  assert.equal(element('download').download, filename);
+  assert.equal(element('title').disabled, false);
+  element('url').value = 'https://example.org/next';
+  element('url').listeners.input();
+  assert.equal(element('title').value, '');
+  await element('article-form').listeners.submit({preventDefault() {}});
+  assert.equal(payload.title, null);
+  URL.revokeObjectURL(element('download').href);
+});
+
+test('failure to load the page title preserves the editable title and restores controls', async () => {
+  const element = id => document.getElementById(id);
+  element('title').value = 'My title';
+  globalThis.fetch = async () => Response.json({error: {message: 'Could not read page'}}, {status: 422});
+  await element('page-title').listeners.click();
+  assert.equal(element('title').value, 'My title');
+  assert.equal(element('page-title').disabled, false);
+  assert.match(element('status').textContent, /Could not read page/);
+});

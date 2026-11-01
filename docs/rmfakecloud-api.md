@@ -17,12 +17,20 @@ array). Document nodes have a `type` and no `isFolder: true`. Only `Entries` is
 traversed; `Trash` is excluded. Root is the empty parent string (upstream also
 accepts `root`). IDs are passed through; labels display the full folder path.
 
+The upload handler passes the multipart filename to `CreateDocument`. The filesystem
+backend strips only the final extension and stores the remaining name as both `Name`
+and the tablet metadata's `visibleName`; it does not require slugification. The app
+therefore preserves spaces, Unicode and punctuation, removes path/control characters,
+and bounds filenames to 180 UTF-8 bytes before the extension. Physical storage uses
+UUIDs. Display and font coverage still require checking on the target tablet firmware.
+
 Sources:
 
 - [Routes](https://github.com/ddvk/rmfakecloud/blob/962a73be4f7ad54aa0818987be34010c252a4753/internal/ui/routes.go)
 - [Login, document listing and multipart handler](https://github.com/ddvk/rmfakecloud/blob/962a73be4f7ad54aa0818987be34010c252a4753/internal/ui/handlers.go)
 - [Cookie/bearer authentication and sync-version selection](https://github.com/ddvk/rmfakecloud/blob/962a73be4f7ad54aa0818987be34010c252a4753/internal/ui/middleware.go)
 - [Tree JSON structures](https://github.com/ddvk/rmfakecloud/blob/962a73be4f7ad54aa0818987be34010c252a4753/internal/ui/viewmodel/models.go)
+- [Document creation and visible name](https://github.com/ddvk/rmfakecloud/blob/962a73be4f7ad54aa0818987be34010c252a4753/internal/storage/fs/documentcreator.go)
 - [Upload response structure](https://github.com/ddvk/rmfakecloud/blob/962a73be4f7ad54aa0818987be34010c252a4753/internal/storage/storage.go)
 
 Upstream selects sync 1.0 or 1.5 from the web JWT and notifies synchronisation

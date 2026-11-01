@@ -57,9 +57,9 @@ def test_renderer_cannot_fetch_resources(url):
 
 
 def test_safe_filenames():
-    assert safe_filename("../../evil\r\nfile", "pdf") == "evil-file.pdf"
-    assert safe_filename("日本語", "epub") == "article.epub"
-    assert len(safe_filename("x" * 500, "pdf")) <= 84
+    assert safe_filename("../../evil\r\nfile", "pdf") == "evil file.pdf"
+    assert safe_filename("日本語", "epub") == "日本語.epub"
+    assert len(safe_filename("x" * 500, "pdf")) <= 184
 
 
 def test_extracted_title_is_not_printed_twice(article):
@@ -71,3 +71,21 @@ def test_extracted_title_is_not_printed_twice(article):
     body = html.fromstring(article_body(article))
     assert len(body.xpath("//h1")) == 1
     assert "Article body." in body.text_content()
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "Café: a reader’s guide (3.2)?",
+        "日本語",
+        "A & B — why!",
+        "a" * 500,
+        "../a\\b\x00\r\nfile",
+        "...",
+    ],
+)
+def test_filename_is_bounded_and_idempotent(title):
+    name = safe_filename(title, "pdf")
+    assert len(name.encode("utf-8")) <= 184
+    assert "/" not in name and "\\" not in name and "\x00" not in name
+    assert safe_filename(name[:-4], "pdf") == name

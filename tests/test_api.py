@@ -152,6 +152,7 @@ async def test_fixture_to_download_then_mock_cloud(client, app):
         if request.url.path.endswith("/documents"):
             return httpx.Response(200, json={"Entries": [], "Trash": []})
         assert "application/epub+zip" in request.content.decode("latin-1")
+        assert 'filename="Café: a reader’s guide (3.2)?.epub"'.encode() in request.content
         return httpx.Response(200, json=[{"ID": "uploaded"}])
 
     settings = Settings(
@@ -162,14 +163,25 @@ async def test_fixture_to_download_then_mock_cloud(client, app):
     async with RMFakeCloud(settings, transport=httpx.MockTransport(handle)) as cloud:
         app.state.cloud = cloud
         response = await client.post(
-            "/api/convert", json={"url": "https://example.org", "format": "epub"}
+            "/api/convert",
+            json={
+                "url": "https://example.org",
+                "format": "epub",
+                "title": "Café: a reader’s guide (3.2)?",
+            },
         )
         assert response.status_code == 200, response.text
         assert response.content.startswith(b"PK")
         uploaded = await client.post(
             "/api/send",
             data={"folder": ""},
-            files={"file": ("Garden.epub", response.content, "application/epub+zip")},
+            files={
+                "file": (
+                    "Café: a reader’s guide (3.2)?.epub",
+                    response.content,
+                    "application/epub+zip",
+                )
+            },
         )
         assert uploaded.status_code == 200
         assert uploaded.json()["id"] == "uploaded"
@@ -208,3 +220,35 @@ async def test_manifest_discovery_includes_proxy_session(client):
         width = int.from_bytes(image.content[16:20], "big")
         height = int.from_bytes(image.content[20:24], "big")
         assert icon["sizes"] == f"{width}x{height}"
+
+
+@pytest.mark.parametrize("title", [None, "", "Café: a reader’s guide (3.2)?"])
+async def test_title_and_unicode_filename_round_trip(client, app, title):
+    from urllib.parse import quote
+
+    filename = "Café: a reader’s guide (3.2)?.pdf"
+    article = Article(title="Default", url="https://example.org", html="<p>Text</p>")
+    app.state.pipeline.process = AsyncMock(
+        return_value=(article, Document(b"%PDF-test", filename, "application/pdf"))
+    )
+    response = await client.post(
+        "/api/convert", json={"url": "https://example.org", "title": title}
+    )
+    assert response.status_code == 200
+    app.state.pipeline.process.assert_awaited_once_with("https://example.org", "pdf", title)
+    assert f"filename*=UTF-8''{quote(filename, safe='')}" in response.headers["content-disposition"]
+    cloud = AsyncMock()
+    cloud.upload.return_value = UploadResult(id="id", name=filename)
+    app.state.cloud = cloud
+    sent = await client.post(
+        "/api/send", files={"file": (filename, response.content, "application/pdf")}
+    )
+    assert sent.status_code == 200
+    assert cloud.upload.call_args.args[0].filename == filename
+
+
+async def test_overlong_title_rejected(client):
+    response = await client.post(
+        "/api/convert", json={"url": "https://example.org", "title": "x" * 501}
+    )
+    assert response.status_code == 422

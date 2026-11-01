@@ -5,6 +5,7 @@ import nh3
 import trafilatura
 from lxml import etree, html
 from pydantic import BaseModel
+from trafilatura.utils import load_html
 
 from app.errors import AppError
 
@@ -122,8 +123,10 @@ class TrafilaturaExtractor:
         cleaned = sanitize_html(etree.tostring(body, encoding="unicode"), url)
         if len("".join(html.fromstring(cleaned).itertext()).strip()) < 100:
             raise AppError("extraction_failed", "No readable article was found on this page.", 422)
+        tree = load_html(content)
+        page_title = " ".join(tree.xpath("string(//title)").split()) if tree is not None else ""
         return Article(
-            title=(doc.title or "Untitled article")[:500],
+            title=(page_title or doc.title or "Untitled article")[:500],
             author=doc.author,
             published=doc.date,
             url=url,
