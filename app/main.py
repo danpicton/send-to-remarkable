@@ -95,7 +95,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.delete_cookie(auth.cookie, secure=True, httponly=True, samesite="strict")
         return response
 
-
     @app.exception_handler(AppError)
     async def app_error(request, exc):
         return JSONResponse(
