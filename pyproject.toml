@@ -5,10 +5,17 @@ description = "A small self-hosted article-to-reMarkable PWA"
 requires-python = ">=3.12"
 license = "AGPL-3.0-only"
 dependencies = [
-  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "pydantic-settings>=2.8,<3",
-  "aiohttp>=3.12,<4", "httpx>=0.28,<1", "trafilatura>=2.0,<3",
-  "weasyprint>=65,<71", "EbookLib>=0.19,<1", "nh3>=0.2.21,<1",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "pydantic-settings>=2.8,<3",
+  "aiohttp>=3.12,<4",
+  "httpx>=0.28,<1",
+  "trafilatura>=2.0,<3",
+  "weasyprint>=65,<71",
+  "EbookLib>=0.19,<1",
+  "nh3>=0.2.21,<1",
   "python-multipart>=0.0.20,<1",
+  "itsdangerous>=2.2,<3",
 ]
 [dependency-groups]
 dev = ["pytest>=8,<10", "pytest-asyncio>=1,<2", "pypdf>=5,<7", "ruff>=0.11,<1"]

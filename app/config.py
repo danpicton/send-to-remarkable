@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
     app_allowed_origins: list[str] | None = None
     auth_mode: str = "proxy"
+    auth_session_secret: SecretStr = SecretStr("")
+    auth_session_days: int = Field(30, ge=1, le=90)
     auth_header: str = "X-Auth-Request-User"
     rmfakecloud_url: str = ""
     rmfakecloud_username: str = ""
@@ -92,8 +94,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def auth_config(self):
-        if self.auth_mode not in ("proxy", "development"):
-            raise ValueError("AUTH_MODE must be proxy or development")
+        if self.auth_mode not in ("proxy", "development", "session"):
+            raise ValueError("AUTH_MODE must be proxy, session or development")
         if not self.auth_header or any(c.isspace() for c in self.auth_header):
             raise ValueError("AUTH_HEADER must be a header name")
+        if self.auth_mode == "session":
+            if len(self.auth_session_secret.get_secret_value()) < 32:
+                raise ValueError(
+                    "Session mode requires AUTH_SESSION_SECRET of at least 32 characters"
+                )
+            if not self.rmfakecloud_username or not self.rmfakecloud_password.get_secret_value():
+                raise ValueError(
+                    "Session mode requires RMFAKECLOUD_USERNAME and RMFAKECLOUD_PASSWORD"
+                )
+            if any(not origin.startswith("https://") for origin in self.public_origins):
+                raise ValueError("Session mode requires HTTPS public origins")
         return self
