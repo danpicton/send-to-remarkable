@@ -36,8 +36,8 @@ reverse proxy or the built-in session login. Use Linux for the resource-limited 
 ## Use it
 
 1. Paste a public HTTP(S) article URL.
-2. Optionally enter an **Article title**, or click **Use page title** to load and edit
-   the HTML title. Leaving it blank uses the page title automatically.
+2. The **Article title** loads automatically. Edit it if needed, or click
+   **Restore page title** to undo your edits. Leaving it blank uses the page title automatically.
 3. Choose PDF (A5 pages, serif text, metadata and page numbers) or EPUB (reflowable
    XHTML, metadata and navigation).
 4. Choose **Send to reMarkable** and a destination, or **Download locally**.

@@ -10,6 +10,11 @@ let loadingFolders = false;
 let hasFolders = false;
 let bookmarkCode = '';
 let sessionLogin = false;
+let titleTimer;
+let titleRequest = 0;
+let titleEdits = 0;
+let originalTitle = null;
+const titleHint = 'Edit the title, or leave blank to use the page title automatically.';
 
 function showLogin() {
   $('login-form').hidden = false;
@@ -87,25 +92,46 @@ async function loadFolders() {
   }
 }
 $('refresh').addEventListener('click', loadFolders);
-$('url').addEventListener('input', () => { $('title').value = ''; });
-$('page-title').addEventListener('click', async () => {
-  if (busy) return;
-  busy = true;
-  controls();
-  status('Reading the page title…');
+$('title').addEventListener('input', () => { titleEdits++; });
+$('url').addEventListener('input', () => {
+  clearTimeout(titleTimer);
+  titleRequest++;
+  originalTitle = null;
+  $('title').value = '';
+  $('title-hint').textContent = titleHint;
+  titleTimer = setTimeout(() => loadPageTitle(), 400);
+});
+
+async function loadPageTitle(restore = false) {
+  clearTimeout(titleTimer);
+  const url = $('url').value.trim();
+  try {
+    if (!['http:', 'https:'].includes(new URL(url).protocol)) return;
+  } catch { return; }
+  const request = ++titleRequest;
+  const edits = titleEdits;
+  if (originalTitle?.url === url) {
+    if (restore) $('title').value = originalTitle.title;
+    return;
+  }
+  $('title-hint').textContent = 'Reading the page title…';
   try {
     const article = await (await api('/api/extract', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({url: $('url').value.trim()}),
+      body: JSON.stringify({url}),
     })).json();
-    $('title').value = article.title;
-    status('Page title loaded. You can edit it before sending.');
+    if (request !== titleRequest || url !== $('url').value.trim()) return;
+    originalTitle = {url, title: article.title};
+    if (edits === titleEdits && (restore || !$('title').value)) $('title').value = article.title;
+    $('title-hint').textContent = titleHint;
   } catch (error) {
-    status(error.message, 'error');
-  } finally {
-    busy = false;
-    controls();
+    if (request !== titleRequest || url !== $('url').value.trim()) return;
+    $('title-hint').textContent = `${error.message} You can enter a title or leave it blank.`;
+    if (restore) status(error.message, 'error');
   }
+}
+$('page-title').addEventListener('click', () => {
+  if (!busy) return loadPageTitle(true);
 });
 
 $('article-form').addEventListener('submit', async event => {
@@ -194,6 +220,7 @@ $('login-form').addEventListener('submit', async event => {
     $('logout').hidden = false;
     loadFolders();
     setupBookmarklet();
+    loadPageTitle();
   } catch (error) {
     $('login-status').textContent = error.message;
   } finally {
@@ -208,6 +235,10 @@ $('logout').addEventListener('click', async () => {
     $('download').hidden = true;
     $('url').value = '';
     $('title').value = '';
+    clearTimeout(titleTimer);
+    titleRequest++;
+    originalTitle = null;
+    $('title-hint').textContent = titleHint;
     status('');
     showLogin();
   } catch (error) {
@@ -227,6 +258,7 @@ async function start() {
   } catch { /* Offline/proxy mode: existing API errors explain unavailable access. */ }
   loadFolders();
   setupBookmarklet();
+  loadPageTitle();
 }
 start();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});

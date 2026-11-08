@@ -25,6 +25,7 @@ test('upload failure retains the converted file as a downloadable browser blob',
   globalThis.fetch = async (path, options) => {
     requests.push({path, options});
     if (path === '/api/config') return Response.json({base_url: 'https://reader.example'});
+    if (path === '/api/extract') return Response.json({title: 'Shared story'});
     if (path === '/api/folders') return Response.json({folders: [{id: '', path: '/'}]});
     if (path === '/api/convert') return new Response('%PDF-original', {headers: {
       'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="Garden.pdf"',
@@ -35,6 +36,7 @@ test('upload failure retains the converted file as a downloadable browser blob',
   await import('../app/static/app.js');
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(element('url').value, 'https://example.org/story');
+  assert.equal(element('title').value, 'Shared story');
   await element('article-form').listeners.submit({preventDefault() {}});
   assert.equal(element('download').hidden, false);
   assert.equal(element('download').download, 'Garden.pdf');
@@ -81,6 +83,7 @@ test('session login preserves shared URL, handles expiry, and signs out', async 
       return Response.json({ok: true});
     }
     if (!authenticated) return Response.json({error: {message: 'Sign in to continue.'}}, {status: 401});
+    if (path === '/api/extract') return Response.json({title: 'Shared article after login'});
     if (path === '/api/config') return Response.json({base_url: 'https://reader.example'});
     if (path === '/api/folders') return Response.json({folders: [{id: '', path: '/'}]});
     throw Error(`Unexpected request: ${path}`);
@@ -90,6 +93,7 @@ test('session login preserves shared URL, handles expiry, and signs out', async 
   assert.equal(element('login-form').hidden, false);
   assert.equal(element('article-form').hidden, true);
   assert.equal(element('url').value, 'https://example.org/shared');
+  assert.equal(element('title').value, '');
   element('username').value = 'reader';
   element('password').value = 'password';
   await element('login-form').listeners.submit({preventDefault() {}});
@@ -98,6 +102,7 @@ test('session login preserves shared URL, handles expiry, and signs out', async 
   assert.equal(element('login-form').hidden, true);
   assert.equal(element('article-form').hidden, false);
   assert.equal(element('url').value, 'https://example.org/shared');
+  assert.equal(element('title').value, 'Shared article after login');
   authenticated = false;
   await element('refresh').listeners.click();
   assert.equal(element('login-form').hidden, false);
@@ -152,4 +157,67 @@ test('failure to load the page title preserves the editable title and restores c
   assert.equal(element('title').value, 'My title');
   assert.equal(element('page-title').disabled, false);
   assert.match(element('status').textContent, /Could not read page/);
+});
+
+test('automatic title loading debounces URL edits, preserves edits, and restores the original', async () => {
+  const nodes = new Map();
+  const element = id => {
+    if (!nodes.has(id)) nodes.set(id, new Element());
+    return nodes.get(id);
+  };
+  globalThis.document = {getElementById: element, createElement: () => new Element()};
+  globalThis.location = {search: ''};
+  const pending = [];
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/auth/session') return Response.json({enabled: false});
+    if (path === '/api/config') return Response.json({base_url: 'https://reader.example'});
+    if (path === '/api/folders') return Response.json({folders: []});
+    if (path === '/api/extract') {
+      return new Promise(resolve => pending.push({url: JSON.parse(options.body).url, resolve}));
+    }
+    throw Error(`Unexpected request: ${path}`);
+  };
+  await import('../app/static/app.js?automatic-title-test');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(pending.length, 0);
+
+  for (const url of ['https://example.org/first', 'https://example.org/second']) {
+    element('url').value = url;
+    element('url').listeners.input();
+  }
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].url, 'https://example.org/second');
+  assert.equal(element('title').disabled, false);
+  element('title').value = 'My edited title';
+  element('title').listeners.input();
+  pending[0].resolve(Response.json({title: 'Original title'}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('title').value, 'My edited title');
+  await element('page-title').listeners.click();
+  assert.equal(element('title').value, 'Original title');
+  assert.equal(pending.length, 1, 'restoring uses the already loaded title');
+
+  element('url').value = 'https://example.org/third';
+  element('url').listeners.input();
+  assert.equal(element('title').value, '');
+  await new Promise(resolve => setTimeout(resolve, 450));
+  element('url').value = 'https://example.org/fourth';
+  element('url').listeners.input();
+  pending[1].resolve(Response.json({title: 'Stale title'}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('title').value, '');
+  await new Promise(resolve => setTimeout(resolve, 450));
+  pending[2].resolve(Response.json({title: 'Fourth title'}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('title').value, 'Fourth title');
+
+  element('url').value = 'https://example.org/failing';
+  element('url').listeners.input();
+  await new Promise(resolve => setTimeout(resolve, 450));
+  pending[3].resolve(Response.json({error: {message: 'Could not read page'}}, {status: 422}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('title').value, '');
+  assert.equal(element('submit').disabled, false);
+  assert.match(element('title-hint').textContent, /Could not read page/);
 });
