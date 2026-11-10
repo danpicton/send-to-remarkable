@@ -1,5 +1,5 @@
 from typing import Protocol
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 import nh3
 import trafilatura
@@ -80,6 +80,24 @@ def sanitize_html(value: str, base_url: str) -> str:
 
 class TrafilaturaExtractor:
     def extract(self, content: bytes, url: str) -> Article:
+        tree = load_html(content)
+        page_title = " ".join(tree.xpath("string(//title)").split()) if tree is not None else ""
+        host = (urlsplit(url).hostname or "").rstrip(".").lower()
+        if (
+            (host == "medium.com" or host.endswith(".medium.com"))
+            and tree is not None
+            and (
+                tree.xpath(
+                    '//*[contains(concat(" ", normalize-space(@class), " "), " error-title ")]'
+                )
+                or (page_title == "Freedium - Freedium" and not tree.xpath("//article"))
+            )
+        ):
+            raise AppError(
+                "freedium_article_unavailable",
+                "Freedium could not retrieve this Medium article. Try again shortly.",
+                422,
+            )
         doc = trafilatura.bare_extraction(
             content,
             url=url,
@@ -123,8 +141,6 @@ class TrafilaturaExtractor:
         cleaned = sanitize_html(etree.tostring(body, encoding="unicode"), url)
         if len("".join(html.fromstring(cleaned).itertext()).strip()) < 100:
             raise AppError("extraction_failed", "No readable article was found on this page.", 422)
-        tree = load_html(content)
-        page_title = " ".join(tree.xpath("string(//title)").split()) if tree is not None else ""
         return Article(
             title=(page_title or doc.title or "Untitled article")[:500],
             author=doc.author,

@@ -12,6 +12,14 @@ from yarl import URL
 
 from app.errors import AppError
 
+FREEDIUM_URL = "https://freedium-mirror.cfd/"
+
+
+def is_medium_url(url: URL) -> bool:
+    host = (url.host or "").rstrip(".").lower()
+    return host == "medium.com" or host.endswith(".medium.com")
+
+
 # Reject transition mechanisms that could encode an otherwise forbidden IPv4 host.
 TRANSITION = tuple(
     ipaddress.ip_network(n)
@@ -107,6 +115,7 @@ class PublicFetcher:
 
     async def fetch(self, value: str) -> FetchedPage:
         url = validate_url(value)
+        medium_url = None
         resolver = PublicResolver()
         connector = aiohttp.TCPConnector(resolver=resolver, use_dns_cache=False, force_close=True)
         try:
@@ -124,6 +133,9 @@ class PublicFetcher:
                     },
                 ) as session:
                     for hop in range(self.max_redirects + 1):
+                        if is_medium_url(url):
+                            medium_url = str(url)
+                            url = validate_url(FREEDIUM_URL + medium_url)
                         async with session.get(url, allow_redirects=False) as response:
                             if response.status in (301, 302, 303, 307, 308):
                                 location = response.headers.get("Location")
@@ -166,7 +178,7 @@ class PublicFetcher:
                                         "The webpage exceeds the download limit.",
                                         413,
                                     )
-                            return FetchedPage(bytes(body), str(url))
+                            return FetchedPage(bytes(body), medium_url or str(url))
         except TimeoutError as exc:
             raise AppError(
                 "fetch_timeout", "The article website took too long to respond.", 504

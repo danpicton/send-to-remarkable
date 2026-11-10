@@ -1,5 +1,7 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
+from time import monotonic
 from typing import Literal
 from urllib.parse import quote
 
@@ -15,6 +17,7 @@ from app.config import Settings
 from app.document import Document
 from app.errors import AppError
 from app.extraction.article import Article
+from app.extraction.fetch import FREEDIUM_URL, PublicFetcher
 from app.integrations.rmfakecloud import Folder, RMFakeCloud, UploadResult
 from app.pipeline import Pipeline
 from app.security import SecurityMiddleware
@@ -76,6 +79,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.pipeline = Pipeline(settings)
     app.state.cloud = None
+    freedium_lock = asyncio.Lock()
+    freedium_available = False
+    freedium_checked_at = None
     auth = SessionAuth(settings) if settings.auth_mode == "session" else None
     app.add_middleware(SecurityMiddleware, settings=settings, auth=auth)
 
@@ -152,6 +158,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/folders", response_model=FolderResponse)
     async def folders():
         return FolderResponse(folders=await app.state.cloud.folders())
+
+    @app.get("/api/freedium/status")
+    async def freedium_status():
+        nonlocal freedium_available, freedium_checked_at
+        # Coalesce checks without taking a conversion slot from title loading/sending.
+        async with freedium_lock:
+            if freedium_checked_at is None or monotonic() - freedium_checked_at >= 30:
+                try:
+                    await PublicFetcher(
+                        settings.max_page_bytes, min(settings.fetch_timeout, 8)
+                    ).fetch(FREEDIUM_URL)
+                    freedium_available = True
+                except AppError:
+                    freedium_available = False
+                freedium_checked_at = monotonic()
+            return {"available": freedium_available}
 
     @app.post("/api/extract", response_model=Article)
     async def extract(payload: ExtractRequest):

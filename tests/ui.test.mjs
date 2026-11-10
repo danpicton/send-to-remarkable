@@ -221,3 +221,60 @@ test('automatic title loading debounces URL edits, preserves edits, and restores
   assert.equal(element('submit').disabled, false);
   assert.match(element('title-hint').textContent, /Could not read page/);
 });
+
+test('Medium shares check Freedium availability and ignore stale checks after URL edits', async () => {
+  const nodes = new Map();
+  const element = id => {
+    if (!nodes.has(id)) nodes.set(id, new Element());
+    return nodes.get(id);
+  };
+  globalThis.document = {getElementById: element, createElement: () => new Element()};
+  globalThis.location = {search: '?url=https://medium.com/@reader/story'};
+  const checks = [];
+  globalThis.fetch = async (path, options) => {
+    if (path === '/api/auth/session') return Response.json({enabled: false});
+    if (path === '/api/config') return Response.json({base_url: 'https://reader.example'});
+    if (path === '/api/folders') return Response.json({folders: []});
+    if (path === '/api/extract') return Response.json({title: 'Medium story'});
+    if (path === '/api/freedium/status') {
+      assert.equal(options.credentials, 'same-origin');
+      assert.equal(options.cache, 'no-store');
+      return new Promise(resolve => checks.push(resolve));
+    }
+    throw Error(`Unexpected request: ${path}`);
+  };
+  await import('../app/static/app.js?freedium-test');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('freedium-status').hidden, false);
+  assert.match(element('freedium-status').textContent, /Checking freedium/);
+  checks[0](Response.json({available: true}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(element('freedium-status').textContent, /is up/);
+  assert.equal(element('freedium-status').dataset.kind, 'success');
+
+  element('url').value = 'https://reader.medium.com/next';
+  element('url').listeners.input();
+  await new Promise(resolve => setTimeout(resolve, 450));
+  checks[1](Response.json({available: false}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(element('freedium-status').textContent, /unavailable/);
+  assert.equal(element('freedium-status').dataset.kind, 'error');
+
+  await element('page-title').listeners.click();
+  element('url').value = 'https://medium.com.evil.example/story';
+  element('url').listeners.input();
+  assert.equal(element('freedium-status').hidden, true);
+  checks[2](Response.json({available: true}));
+  await new Promise(resolve => setTimeout(resolve, 450));
+  assert.equal(element('freedium-status').hidden, true);
+  assert.equal(element('freedium-status').textContent, '');
+  assert.equal(checks.length, 3, 'other sites do not trigger a Freedium check');
+
+  element('url').value = 'https://medium.com/another';
+  element('url').listeners.input();
+  await new Promise(resolve => setTimeout(resolve, 450));
+  checks[3](Response.json({error: {message: 'Offline'}}, {status: 502}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(element('freedium-status').textContent, /Could not check/);
+  assert.equal(element('submit').disabled, false);
+});

@@ -209,12 +209,23 @@ For POSTs send `Origin: <the configured public origin matching the request Host>
 | `GET /api/health` | Unauthenticated liveness: `{"status":"ok"}`; does not contact cloud |
 | `GET /api/config` | Allowed public origin matching this request's Host; no credentials |
 | `GET /api/folders` | `{"folders":[{"id":"","name":"Root","path":"/","parent":""},…]}` |
+| `GET /api/freedium/status` | Authenticated availability check: `{"available":true}` if the Freedium homepage responds successfully |
 | `POST /api/extract` | JSON `{"url":"https://…"}` → sanitised HTML and article metadata |
 | `POST /api/convert` | JSON `{"url":"https://…","format":"pdf","title":"Optional title"}` → attachment bytes |
 | `POST /api/send` | Multipart `file` (PDF/EPUB) and `folder` (ID, empty for root) → `{"id":"…","name":"…"}` |
 
 The send endpoint accepts an already converted file. This avoids doing conversion
 twice and lets the UI preserve the exact file when rmfakecloud is unavailable.
+
+Links on `medium.com` and its subdomains are fetched through
+`https://freedium-mirror.cfd/`, including links that redirect to Medium. No Medium
+account, cookies or sign-in are used. The original Medium URL stays in the document.
+When a Medium URL is shared or entered, the page checks Freedium from the server
+and shows its availability below the URL. A successful homepage check does not
+guarantee that a particular article can be retrieved; checks are reused for up to
+30 seconds. Medium publications on custom
+domains are only routed through Freedium if they redirect to `medium.com`.
+
 Uploaded filenames and file signatures are checked; this is not a general PDF/EPUB
 security scanner. Only authenticated, trusted personal users should have access.
 
