@@ -26,6 +26,9 @@ button { cursor: pointer; }
 #status { font-size: .9rem; margin-top: 16px; min-height: 1.5em; overflow-wrap: anywhere; }
 #status[data-kind="error"] { color: #9b342a; }
 #status[data-kind="success"] { color: #26583c; }
+#freedium-status { margin: -10px 0 20px; }
+#freedium-status[data-kind="success"] { color: #26583c; }
+#freedium-status[data-kind="error"] { color: #9b342a; }
 a { color: #304f40; text-underline-offset: 3px; }
 .download { display: inline-block; margin-top: 8px; font-weight: 600; }
 [hidden] { display: none !important; }

@@ -14,7 +14,44 @@ let titleTimer;
 let titleRequest = 0;
 let titleEdits = 0;
 let originalTitle = null;
+let freediumRequest = 0;
 const titleHint = 'Edit the title, or leave blank to use the page title automatically.';
+
+function resetFreediumStatus() {
+  freediumRequest++;
+  const indicator = $('freedium-status');
+  let medium = false;
+  try {
+    const url = new URL($('url').value.trim());
+    const host = url.hostname.toLowerCase().replace(/\.$/, '');
+    medium = ['http:', 'https:'].includes(url.protocol) &&
+      (host === 'medium.com' || host.endsWith('.medium.com'));
+  } catch { /* Incomplete URL. */ }
+  indicator.hidden = !medium;
+  indicator.dataset.kind = '';
+  indicator.textContent = medium ? 'Checking freedium-mirror.cfd…' : '';
+  return medium;
+}
+
+async function checkFreediumStatus() {
+  if (!resetFreediumStatus()) return;
+  const request = freediumRequest;
+  const url = $('url').value.trim();
+  let message;
+  let kind = 'error';
+  try {
+    const {available} = await (await api('/api/freedium/status')).json();
+    message = available
+      ? 'freedium-mirror.cfd is up · Medium articles use Freedium without a Medium login.'
+      : 'freedium-mirror.cfd is unavailable · Medium articles may not load. Try again shortly.';
+    if (available) kind = 'success';
+  } catch {
+    message = 'Could not check freedium-mirror.cfd. Try again shortly.';
+  }
+  if (request !== freediumRequest || url !== $('url').value.trim()) return;
+  $('freedium-status').textContent = message;
+  $('freedium-status').dataset.kind = kind;
+}
 
 function showLogin() {
   $('login-form').hidden = false;
@@ -94,6 +131,7 @@ async function loadFolders() {
 $('refresh').addEventListener('click', loadFolders);
 $('title').addEventListener('input', () => { titleEdits++; });
 $('url').addEventListener('input', () => {
+  resetFreediumStatus();
   clearTimeout(titleTimer);
   titleRequest++;
   originalTitle = null;
@@ -104,6 +142,7 @@ $('url').addEventListener('input', () => {
 
 async function loadPageTitle(restore = false) {
   clearTimeout(titleTimer);
+  checkFreediumStatus();
   const url = $('url').value.trim();
   try {
     if (!['http:', 'https:'].includes(new URL(url).protocol)) return;
@@ -234,6 +273,7 @@ $('logout').addEventListener('click', async () => {
     fileURL = null;
     $('download').hidden = true;
     $('url').value = '';
+    resetFreediumStatus();
     $('title').value = '';
     clearTimeout(titleTimer);
     titleRequest++;

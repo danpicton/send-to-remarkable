@@ -6,6 +6,7 @@ import pytest
 
 from app.config import Settings
 from app.document import Document
+from app.errors import AppError
 from app.extraction.article import Article
 from app.integrations.rmfakecloud import Folder, UploadResult
 from app.main import create_app
@@ -252,3 +253,27 @@ async def test_overlong_title_rejected(client):
         "/api/convert", json={"url": "https://example.org", "title": "x" * 501}
     )
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("available", [True, False])
+async def test_freedium_status(client, app, monkeypatch, available):
+    from app.extraction.fetch import FREEDIUM_URL, PublicFetcher
+
+    fetch = AsyncMock()
+    if not available:
+        fetch.side_effect = AppError("fetch_timeout", "Timed out", 504)
+    monkeypatch.setattr(PublicFetcher, "fetch", fetch)
+    app.state.pipeline.active = app.state.pipeline.settings.max_conversions
+    response = await client.get("/api/freedium/status")
+    assert response.status_code == 200
+    assert response.json() == {"available": available}
+    assert response.headers["cache-control"] == "no-store"
+    assert (await client.get("/api/freedium/status")).json() == {"available": available}
+    fetch.assert_awaited_once_with(FREEDIUM_URL)
+
+
+async def test_freedium_status_requires_auth(app):
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://reader.example"
+    ) as client:
+        assert (await client.get("/api/freedium/status")).status_code == 401

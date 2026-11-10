@@ -34,6 +34,7 @@
     <form id="article-form">
       <label for="url">Article URL</label>
       <input id="url" name="url" type="url" inputmode="url" placeholder="https://…" required maxlength="4096" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <p id="freedium-status" class="hint" role="status" aria-live="polite" hidden></p>
       <div class="label-row"><label for="title">Article title</label><button id="page-title" type="button" class="text-button">Restore page title</button></div>
       <input id="title" name="title" maxlength="500" placeholder="Defaults to the HTML page title" autocomplete="off" aria-describedby="title-hint">
       <p id="title-hint" class="hint">Edit the title, or leave blank to use the page title automatically.</p>

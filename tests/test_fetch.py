@@ -118,6 +118,10 @@ def mock_session(monkeypatch, responses):
     def factory(**kwargs):
         assert kwargs["trust_env"] is False
         assert kwargs["auto_decompress"] is False
+        from aiohttp import DummyCookieJar
+
+        assert isinstance(kwargs["cookie_jar"], DummyCookieJar)
+        assert "Authorization" not in kwargs["headers"]
         return session
 
     monkeypatch.setattr(fetch.aiohttp, "ClientSession", factory)
@@ -168,3 +172,51 @@ async def test_response_limits_and_errors(monkeypatch, response, code):
     with pytest.raises(AppError) as error:
         await PublicFetcher(max_bytes=8).fetch("https://example.org")
     assert error.value.code == code
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://medium.com/@reader/story-123?source=share#heading",
+        "https://reader.medium.com/story-123",
+        "https://MEDIUM.com./story-123",
+    ],
+)
+async def test_medium_uses_freedium_without_contacting_medium(monkeypatch, url):
+    from app.extraction.fetch import FREEDIUM_URL, PublicFetcher
+
+    session = mock_session(monkeypatch, [FakeResponse()])
+    result = await PublicFetcher().fetch(url)
+    original = str(validate_url(url))
+    assert session.urls == [FREEDIUM_URL + original]
+    assert result.url == original
+    assert result.content == b"<html>Article</html>"
+
+
+async def test_redirect_to_medium_uses_freedium(monkeypatch):
+    from app.extraction.fetch import FREEDIUM_URL, PublicFetcher
+
+    medium = "https://medium.com/@reader/story-123"
+    session = mock_session(monkeypatch, [FakeResponse(302, {"Location": medium}), FakeResponse()])
+    result = await PublicFetcher().fetch("https://example.org/shared")
+    assert session.urls == ["https://example.org/shared", FREEDIUM_URL + medium]
+    assert result.url == medium
+
+
+@pytest.mark.parametrize("host", ["medium.com.evil.example", "notmedium.com"])
+async def test_medium_lookalikes_are_not_rewritten(monkeypatch, host):
+    from app.extraction.fetch import PublicFetcher
+
+    session = mock_session(monkeypatch, [FakeResponse()])
+    await PublicFetcher().fetch(f"https://{host}/story")
+    assert session.urls == [f"https://{host}/story"]
+
+
+async def test_freedium_redirects_still_validate_destinations(monkeypatch):
+    from app.extraction.fetch import PublicFetcher
+
+    session = mock_session(monkeypatch, [FakeResponse(302, {"Location": "http://127.0.0.1/"})])
+    with pytest.raises(AppError) as error:
+        await PublicFetcher().fetch("https://medium.com/story")
+    assert error.value.code == "unsafe_url"
+    assert len(session.urls) == 1

@@ -64,3 +64,26 @@ def test_unicode_html_title_without_charset():
     )
     article = TrafilaturaExtractor().extract(content, "https://example.org/garden")
     assert article.title == "Café: a reader’s guide — 日本語"
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        '<title>Freedium - Freedium</title><main><h1 class="error-title">'
+        "Access blocked by publisher.</h1><p>Try again shortly.</p></main>",
+        "<title>Freedium - Freedium</title><main>Loading article…</main>",
+    ],
+)
+def test_freedium_error_or_loading_page_is_not_an_article(markup):
+    with pytest.raises(AppError) as error:
+        TrafilaturaExtractor().extract(
+            f"<html>{markup}</html>".encode(), "https://reader.medium.com/story"
+        )
+    assert error.value.code == "freedium_article_unavailable"
+
+
+def test_mirrored_article_preserves_original_medium_url():
+    url = "https://medium.com/@reader/garden"
+    article = TrafilaturaExtractor().extract(FIXTURE.read_bytes(), url)
+    assert article.title == "The quiet garden"
+    assert article.url == url
