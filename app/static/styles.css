@@ -26,11 +26,30 @@ button { cursor: pointer; }
 #status { font-size: .9rem; margin-top: 16px; min-height: 1.5em; overflow-wrap: anywhere; }
 #status[data-kind="error"] { color: #9b342a; }
 #status[data-kind="success"] { color: #26583c; }
-#freedium-status { margin: -10px 0 20px; }
+#freedium-status { position: relative; margin: -10px 0 20px; padding-left: 22px; }
+#freedium-status::before { content: ""; position: absolute; left: 3px; top: .35em; width: 10px; height: 10px; border-radius: 50%; background: #879187; box-shadow: 0 0 0 3px #e5e7e0; }
 #freedium-status[data-kind="success"] { color: #26583c; }
+#freedium-status[data-kind="success"]::before { background: #288447; box-shadow: 0 0 0 3px #deebdf; }
 #freedium-status[data-kind="error"] { color: #9b342a; }
+#freedium-status[data-kind="error"]::before { background: #bc4035; box-shadow: 0 0 0 3px #f2dfd9; }
 a { color: #304f40; text-underline-offset: 3px; }
 .download { display: inline-block; margin-top: 8px; font-weight: 600; }
+.document-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.preview { display: inline-block; margin-top: 8px; font-weight: 600; }
+.confirmation { text-align: center; }
+.success-art { display: block; margin: 12px auto 24px; }
+.confirmation .intro { max-width: 360px; margin: 0 auto; text-wrap: pretty; }
+.document-card { border: 1px solid #d8dcd2; border-radius: 14px; background: #fffefa; padding: 24px; margin: 30px 0 22px; }
+.document-format { display: inline-block; border: 1px solid #c9cec4; border-radius: 5px; padding: 3px 8px; color: #536156; font-size: .7rem; font-weight: 650; letter-spacing: .08em; }
+.document-title { font-family: Georgia, serif; font-size: 1.3rem; line-height: 1.4; margin: 12px 0 8px; overflow-wrap: anywhere; }
+#result[data-complete="true"] .document-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+#result[data-complete="true"] .document-actions a { display: flex; align-items: center; justify-content: center; min-height: 52px; margin: 0; padding: 12px 18px; border-radius: 8px; text-decoration: none; text-align: center; }
+#result[data-complete="true"] .download { background: #304f40; color: #fff; }
+#result[data-complete="true"] .download:hover { background: #243f32; }
+#result[data-complete="true"] .preview { border: 1px solid #b9c5b8; background: #fffefa; }
+#result[data-complete="true"] .preview:hover { background: #e6ece2; }
+.preview-hint { text-align: center; margin-top: 12px; }
+.send-another { display: block; margin: 24px auto 0; min-height: 44px; }
 [hidden] { display: none !important; }
 details { border-top: 1px solid #d8dcd2; margin-top: 30px; padding-top: 18px; font-size: .85rem; }
 summary { cursor: pointer; color: #536156; }

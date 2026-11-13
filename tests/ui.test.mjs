@@ -1,12 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+const fetchBlob = globalThis.fetch;
+
 class Element {
   value = ''; hidden = false; disabled = false; textContent = ''; dataset = {};
   listeners = {}; selectedOptions = [{textContent: '/Reading'}];
   addEventListener(name, callback) { this.listeners[name] = callback; }
   replaceChildren(...children) { this.children = children; }
   click() { this.clicked = true; }
+  focus() { this.focused = true; }
+  removeAttribute(name) { delete this[name]; }
 }
 
 test('upload failure retains the converted file as a downloadable browser blob', async () => {
@@ -39,6 +43,9 @@ test('upload failure retains the converted file as a downloadable browser blob',
   assert.equal(element('title').value, 'Shared story');
   await element('article-form').listeners.submit({preventDefault() {}});
   assert.equal(element('download').hidden, false);
+  assert.equal(element('confirmation').hidden, true);
+  assert.equal(element('preview').hidden, false);
+  assert.equal(element('preview').href, element('download').href);
   assert.equal(element('download').download, 'Garden.pdf');
   assert.ok(element('download').href.startsWith('blob:'));
   assert.match(element('status').textContent, /Cloud unavailable.*ready to download/);
@@ -277,4 +284,82 @@ test('Medium shares check Freedium availability and ignore stale checks after UR
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.match(element('freedium-status').textContent, /Could not check/);
   assert.equal(element('submit').disabled, false);
+});
+
+test('confirmation waits for delivery, previews the original PDF, and returns to a fresh form', async () => {
+  const nodes = new Map();
+  const element = id => {
+    if (!nodes.has(id)) nodes.set(id, new Element());
+    return nodes.get(id);
+  };
+  globalThis.document = {getElementById: element, createElement: () => new Element()};
+  globalThis.location = {search: ''};
+  let finishSend;
+  let format = 'pdf';
+  let uploads = 0;
+  globalThis.fetch = async path => {
+    if (path === '/api/auth/session') return Response.json({enabled: false});
+    if (path === '/api/config') return Response.json({base_url: 'https://reader.example'});
+    if (path === '/api/folders') return Response.json({folders: [{id: '', path: '/'}]});
+    if (path === '/api/convert') return new Response(format === 'pdf' ? '%PDF-original' : 'epub', {headers: {
+      'Content-Type': format === 'pdf' ? 'application/pdf' : 'application/epub+zip',
+      'Content-Disposition': `attachment; filename="Garden.${format}"`,
+    }});
+    if (path === '/api/send') {
+      uploads++;
+      return new Promise(resolve => { finishSend = resolve; });
+    }
+    throw Error(`Unexpected request: ${path}`);
+  };
+  await import('../app/static/app.js?confirmation-test');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  element('url').value = 'https://example.org/story';
+  element('title').value = 'Garden';
+  const submitted = element('article-form').listeners.submit({preventDefault() {}});
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(element('confirmation').hidden, true, 'upload is still pending');
+  assert.equal(element('article-form').hidden, false);
+  finishSend(Response.json({id: 'uploaded'}));
+  await submitted;
+  assert.equal(element('confirmation').hidden, false);
+  assert.equal(element('article-form').hidden, true);
+  assert.equal(element('page-header').hidden, true);
+  assert.equal(element('sharing').hidden, true);
+  assert.equal(element('confirmation-title').textContent, 'Article sent');
+  assert.equal(element('confirmation-title').focused, true);
+  assert.match(element('confirmation-message').textContent, /after synchronisation/);
+  assert.equal(element('document-title').textContent, 'Garden');
+  assert.equal(element('document-destination').textContent, 'Sent to /Reading');
+  assert.equal(element('preview').hidden, false);
+  assert.equal(element('preview').href, element('download').href);
+  const pdfURL = element('preview').href;
+  assert.equal(await (await fetchBlob(pdfURL)).text(), '%PDF-original');
+  element('send-another').listeners.click();
+  assert.equal(element('confirmation').hidden, true);
+  assert.equal(element('article-form').hidden, false);
+  assert.equal(element('page-header').hidden, false);
+  assert.equal(element('sharing').hidden, false);
+  assert.equal(element('url').value, '');
+  assert.equal(element('title').value, '');
+  assert.equal(element('url').focused, true);
+  assert.equal(element('preview').href, undefined);
+  assert.equal(element('download').hidden, true);
+  await assert.rejects(fetchBlob(pdfURL), 'starting another article releases the old document');
+
+  // Download-only EPUBs get accurate copy, keep the download, and offer no PDF preview.
+  format = 'epub';
+  element('format').value = format;
+  element('format').listeners.change();
+  element('delivery').value = 'download';
+  element('delivery').listeners.change();
+  element('url').value = 'https://example.org/next';
+  await element('article-form').listeners.submit({preventDefault() {}});
+  assert.equal(uploads, 1);
+  assert.equal(element('confirmation-title').textContent, 'Your article is ready');
+  assert.equal(element('document-format').textContent, 'EPUB');
+  assert.equal(element('download').download, 'Garden.epub');
+  assert.equal(element('download').clicked, true);
+  assert.equal(element('preview').hidden, true);
+  assert.equal(element('preview-hint').hidden, true);
+  element('send-another').listeners.click();
 });

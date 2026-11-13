@@ -54,10 +54,60 @@ async function checkFreediumStatus() {
 }
 
 function showLogin() {
+  resetConfirmation();
+  $('result').hidden = true;
   $('login-form').hidden = false;
   $('article-form').hidden = true;
   $('logout').hidden = true;
 }
+
+function resetConfirmation() {
+  $('confirmation').hidden = true;
+  $('send-another').hidden = true;
+  $('result').dataset.complete = 'false';
+  for (const id of ['page-header', 'sharing', 'status']) $(id).hidden = false;
+}
+
+function clearDocument() {
+  if (fileURL) URL.revokeObjectURL(fileURL);
+  fileURL = null;
+  for (const id of ['download', 'preview']) {
+    $(id).hidden = true;
+    $(id).removeAttribute('href');
+  }
+  $('preview-hint').hidden = true;
+}
+
+function showConfirmation(filename, folderName = null) {
+  const sent = prefs.delivery === 'send';
+  $('confirmation-title').textContent = sent ? 'Article sent' : 'Your article is ready';
+  $('confirmation-message').textContent = sent
+    ? 'It will appear on your reMarkable after synchronisation.'
+    : 'Your download is ready. Keep a copy for your next quiet moment.';
+  $('document-title').textContent = filename.replace(/\.(pdf|epub)$/i, '');
+  $('document-format').textContent = prefs.format.toUpperCase();
+  $('document-destination').textContent = sent ? `Sent to ${folderName}` : 'Ready to download';
+  for (const id of ['page-header', 'article-form', 'sharing', 'status']) $(id).hidden = true;
+  $('result').dataset.complete = 'true';
+  $('confirmation').hidden = false;
+  $('send-another').hidden = false;
+  $('confirmation-title').focus();
+}
+
+$('send-another').addEventListener('click', () => {
+  resetConfirmation();
+  clearDocument();
+  $('article-form').hidden = false;
+  $('url').value = '';
+  $('title').value = '';
+  clearTimeout(titleTimer);
+  titleRequest++;
+  originalTitle = null;
+  resetFreediumStatus();
+  $('title-hint').textContent = titleHint;
+  status('');
+  $('url').focus();
+});
 
 
 $('format').value = prefs.format;
@@ -178,9 +228,9 @@ $('article-form').addEventListener('submit', async event => {
   if (busy) return;
   busy = true;
   controls();
-  if (fileURL) URL.revokeObjectURL(fileURL);
-  fileURL = null;
-  $('download').hidden = true;
+  resetConfirmation();
+  clearDocument();
+  $('result').hidden = false;
   let converted = false;
   try {
     status('Extracting the article and preparing your document…');
@@ -202,9 +252,14 @@ $('article-form').addEventListener('submit', async event => {
     $('download').download = filename;
     $('download').textContent = `Download ${prefs.format.toUpperCase()}`;
     $('download').hidden = false;
+    if (prefs.format === 'pdf') {
+      $('preview').href = fileURL;
+      $('preview').hidden = false;
+      $('preview-hint').hidden = false;
+    }
     converted = true;
     if (prefs.delivery === 'download') {
-      status('Your document is ready.', 'success');
+      showConfirmation(filename);
       $('download').click();
     } else {
       status('Document ready. Sending to reMarkable…');
@@ -213,7 +268,7 @@ $('article-form').addEventListener('submit', async event => {
       form.append('file', blob, filename);
       await api('/api/send', {method: 'POST', body: form});
       const folderName = $('folder').selectedOptions[0]?.textContent || 'the selected folder';
-      status(`Sent to ${folderName}. It will appear on your reMarkable after synchronisation.`, 'success');
+      showConfirmation(filename, folderName);
     }
   } catch (error) {
     const detail = error.name === 'TimeoutError' ? 'The request timed out. Check your tablet before retrying an upload.'
@@ -256,6 +311,7 @@ $('login-form').addEventListener('submit', async event => {
     $('password').value = '';
     $('login-form').hidden = true;
     $('article-form').hidden = false;
+    $('result').hidden = false;
     $('logout').hidden = false;
     loadFolders();
     setupBookmarklet();
@@ -269,9 +325,7 @@ $('login-form').addEventListener('submit', async event => {
 $('logout').addEventListener('click', async () => {
   try {
     await api('/api/auth/logout', {method: 'POST'});
-    if (fileURL) URL.revokeObjectURL(fileURL);
-    fileURL = null;
-    $('download').hidden = true;
+    clearDocument();
     $('url').value = '';
     resetFreediumStatus();
     $('title').value = '';
